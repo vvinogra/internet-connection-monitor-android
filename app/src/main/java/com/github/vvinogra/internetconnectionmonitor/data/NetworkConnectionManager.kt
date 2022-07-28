@@ -5,22 +5,15 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.core.content.getSystemService
-import com.github.vvinogra.internetconnectionmonitor.data.model.NetworkState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.*
-import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
 interface NetworkConnectionManager {
     /**
-     * Emits the current network state on every network update
-     */
-    val networkStateFlow: StateFlow<NetworkState>
-
-    /**
-     * Emits [Boolean] value only when the current network becomes available or unavailable.
+     * Emits [Boolean] value when the current network becomes available or unavailable.
      */
     val isNetworkConnectedFlow: StateFlow<Boolean>
 
@@ -41,125 +34,125 @@ class NetworkConnectionManagerImpl @Inject constructor(
 
     private val networkCallback = NetworkCallback()
 
-    /**
-     * On Android 9, [ConnectivityManager.NetworkCallback.onBlockedStatusChanged] is not called after
-     * the [ConnectivityManager.NetworkCallback.onAvailable] callback hence we should not use the default value
-     */
-    private val _isBlockedFlow = MutableStateFlow<Boolean?>(null)
-    private val _isAvailableFlow = MutableStateFlow(false)
-    private val _networkCapabilitiesFlow = MutableStateFlow<NetworkCapabilities?>(null)
-
-    private val _currentNetwork = combine(
-        _isBlockedFlow,
-        _isAvailableFlow,
-        _networkCapabilitiesFlow,
-        ::createCurrentNetwork
-    ).stateIn(
-        scope = coroutineScope,
-        started = SharingStarted.WhileSubscribed(),
-        initialValue = CurrentNetwork(
-            networkCapabilities = _networkCapabilitiesFlow.value,
-            isAvailable = _isAvailableFlow.value,
-            isBlocked = _isBlockedFlow.value
-        )
-    )
-
-    override val networkStateFlow: StateFlow<NetworkState> =
-        _currentNetwork.map(::mapToNetworkState)
-            .stateIn(
-                scope = coroutineScope,
-                started = SharingStarted.WhileSubscribed(),
-                initialValue = mapToNetworkState(_currentNetwork.value)
-            )
+    private val _currentNetwork = MutableStateFlow(provideDefaultCurrentNetwork())
 
     override val isNetworkConnectedFlow: StateFlow<Boolean> =
-        networkStateFlow
-            .map { it == NetworkState.CONNECTED }
+        _currentNetwork
+            .map { it.isConnected() }
             .stateIn(
                 scope = coroutineScope,
                 started = SharingStarted.WhileSubscribed(),
-                initialValue = networkStateFlow.value == NetworkState.CONNECTED
+                initialValue = _currentNetwork.value.isConnected()
             )
 
     override val isNetworkConnected: Boolean
-        get() = _currentNetwork.value.isConnected()
+        get() = isNetworkConnectedFlow.value
 
     override fun startListenNetworkState() {
+        if (_currentNetwork.value.isListening) {
+            return
+        }
+
+        // Reset state before start listening
+        _currentNetwork.update {
+            provideDefaultCurrentNetwork()
+                .copy(isListening = true)
+        }
+
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
     }
 
     override fun stopListenNetworkState() {
-        // Using "runCatching" to handle exception in case we didn't start listening
-        // before calling this function
-        runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        if (!_currentNetwork.value.isListening) {
+            return
+        }
+
+        _currentNetwork.update {
+            it.copy(isListening = false)
+        }
+
+        connectivityManager.unregisterNetworkCallback(networkCallback)
     }
 
     private inner class NetworkCallback : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            _isAvailableFlow.value = true
+            _currentNetwork.update {
+                it.copy(isAvailable = true)
+            }
         }
 
         override fun onLost(network: Network) {
-            _isAvailableFlow.value = false
-            _networkCapabilitiesFlow.value = null
+            _currentNetwork.update {
+                it.copy(
+                    isAvailable = false,
+                    networkCapabilities = null
+                )
+            }
         }
 
         override fun onUnavailable() {
-            _isAvailableFlow.value = false
-            _networkCapabilitiesFlow.value = null
+            _currentNetwork.update {
+                it.copy(
+                    isAvailable = false,
+                    networkCapabilities = null
+                )
+            }
         }
 
         override fun onCapabilitiesChanged(
             network: Network,
             networkCapabilities: NetworkCapabilities
         ) {
-            _networkCapabilitiesFlow.value = networkCapabilities
+            _currentNetwork.update {
+                it.copy(networkCapabilities = networkCapabilities)
+            }
         }
 
         override fun onBlockedStatusChanged(network: Network, blocked: Boolean) {
-            _isBlockedFlow.value = blocked
+            _currentNetwork.update {
+                it.copy(isBlocked = blocked)
+            }
         }
     }
 
-    private fun createCurrentNetwork(
-        isBlocked: Boolean?,
-        isAvailable: Boolean,
-        networkCapabilities: NetworkCapabilities?
-    ) = CurrentNetwork(
-        networkCapabilities = networkCapabilities,
-        isAvailable = isAvailable,
-        isBlocked = isBlocked
-    ).also {
-        Timber.d("Network state changed; current network = $it")
+    /**
+     * On Android 9, [ConnectivityManager.NetworkCallback.onBlockedStatusChanged] is not called when
+     * we call the [ConnectivityManager.registerDefaultNetworkCallback] function.
+     * Hence we assume that the network is unblocked by default.
+     */
+    private fun provideDefaultCurrentNetwork(): CurrentNetwork {
+        return CurrentNetwork(
+            isListening = false,
+            networkCapabilities = null,
+            isAvailable = false,
+            isBlocked = false
+        )
     }
 
-    private fun mapToNetworkState(currentNetwork: CurrentNetwork) =
-        if (currentNetwork.isConnected().also { isConnected ->
-                Timber.d("mapToNetworkState; isConnected = $isConnected")
-            }) {
-            NetworkState.CONNECTED
-        } else {
-            NetworkState.NOT_CONNECTED
-        }
-}
+    private data class CurrentNetwork(
+        val isListening: Boolean,
+        val networkCapabilities: NetworkCapabilities?,
+        val isAvailable: Boolean,
+        val isBlocked: Boolean
+    )
 
-private data class CurrentNetwork(
-    val networkCapabilities: NetworkCapabilities?,
-    val isAvailable: Boolean,
-    val isBlocked: Boolean?
-)
+    private fun CurrentNetwork.isConnected(): Boolean {
+        // Since we don't know the network state if NetworkCallback is not registered.
+        // We assume that it's disconnected.
+        return isListening &&
+                isAvailable &&
+                !isBlocked &&
+                networkCapabilities.isNetworkCapabilitiesValid()
+    }
 
-private fun CurrentNetwork.isConnected(): Boolean {
-    return isAvailable && isBlocked != true && networkCapabilities.isNetworkCapabilitiesValid()
-}
-
-private fun NetworkCapabilities?.isNetworkCapabilitiesValid(): Boolean = when {
-    this == null -> false
-    hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
-            (hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                    hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
-                    hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                    hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) -> true
-    else -> false
+    private fun NetworkCapabilities?.isNetworkCapabilitiesValid(): Boolean = when {
+        this == null -> false
+        hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
+                (hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                        hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                        hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) -> true
+        else -> false
+    }
 }

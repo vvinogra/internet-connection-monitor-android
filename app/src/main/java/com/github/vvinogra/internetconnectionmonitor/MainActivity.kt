@@ -14,25 +14,19 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
+
     @Inject
     lateinit var networkConnectionManager: NetworkConnectionManager
-
-    private lateinit var tvIsNetworkConnected: TextView
-    private lateinit var tvNetworkState: TextView
-
-    private lateinit var btnStartListen: Button
-    private lateinit var btnStopListen: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
 
-        tvIsNetworkConnected = findViewById(R.id.tvIsNetworkConnected)
-        tvNetworkState = findViewById(R.id.tvNetworkState)
+        val tvIsNetworkConnected: TextView = findViewById(R.id.tvIsNetworkConnected)
 
-        btnStartListen = findViewById(R.id.btnStartListen)
-        btnStopListen = findViewById(R.id.btnStopListen)
+        val btnStartListen: Button = findViewById(R.id.btnStartListen)
+        val btnStopListen: Button = findViewById(R.id.btnStopListen)
 
         btnStartListen.setOnClickListener {
             networkConnectionManager.startListenNetworkState()
@@ -41,12 +35,6 @@ class MainActivity : AppCompatActivity() {
         btnStopListen.setOnClickListener {
             networkConnectionManager.stopListenNetworkState()
         }
-
-        networkConnectionManager.networkStateFlow
-            .onEach {
-                tvNetworkState.text = getString(R.string.network_state_placeholder, it)
-            }
-            .launchIn(lifecycleScope)
 
         networkConnectionManager.isNetworkConnectedFlow
             .onEach {

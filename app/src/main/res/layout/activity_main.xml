@@ -12,27 +12,13 @@
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
         android:textAppearance="?textAppearanceHeadline6"
-        app:layout_constraintBottom_toTopOf="@+id/tvNetworkState"
+        app:layout_constraintBottom_toTopOf="@+id/btnStartListen"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_chainStyle="packed"
         tools:text="@string/network_is_connected" />
-
-    <TextView
-        android:id="@+id/tvNetworkState"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:textAppearance="?textAppearanceHeadline6"
-        app:layout_constraintBottom_toTopOf="@+id/btnStartListen"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tvIsNetworkConnected"
-        app:layout_constraintVertical_chainStyle="packed"
-        tools:text="@string/network_state_placeholder" />
 
     <Button
         android:id="@+id/btnStartListen"
@@ -43,7 +29,7 @@
         app:layout_constraintEnd_toStartOf="@+id/btnStopListen"
         app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tvNetworkState" />
+        app:layout_constraintTop_toBottomOf="@+id/tvIsNetworkConnected" />
 
     <Button
         android:id="@+id/btnStopListen"
