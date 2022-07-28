@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">InternetConnectionMonitor</string>
+    <string name="network_is_connected">Network is connected</string>
+    <string name="network_is_disconnected">Network is disconnected</string>
+    <string name="start_listening">Start Listening</string>
+    <string name="stop_listening">Stop Listening</string>
+    <string name="network_state_placeholder">Network State: %s</string>
+</resources>
